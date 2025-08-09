@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import UIKit  // Add this import for UIApplication
 
 class NotificationManager: ObservableObject {
     private let notificationCenter = UNUserNotificationCenter.current()
@@ -82,9 +83,45 @@ class NotificationManager: ObservableObject {
         // Remove delivered notifications from notification center
         notificationCenter.removeAllDeliveredNotifications()
         
-        // Reset badge count
-        DispatchQueue.main.async {
-            UIApplication.shared.applicationIconBadgeNumber = 0
+        // Reset badge count using modern iOS 17+ API
+        resetBadgeCount()
+    }
+    
+    private func resetBadgeCount() {
+        if #available(iOS 17.0, *) {
+            // Use modern UNUserNotificationCenter API for iOS 17+
+            notificationCenter.setBadgeCount(0) { error in
+                if let error = error {
+                    print("❌ Failed to reset badge count: \(error.localizedDescription)")
+                } else {
+                    print("✅ Badge count reset to 0")
+                }
+            }
+        } else {
+            // Fallback to legacy API for iOS 16 and earlier
+            DispatchQueue.main.async {
+                UIApplication.shared.applicationIconBadgeNumber = 0
+                print("✅ Badge count reset to 0 (legacy)")
+            }
+        }
+    }
+    
+    private func setBadgeCount(_ count: Int) {
+        if #available(iOS 17.0, *) {
+            // Use modern UNUserNotificationCenter API for iOS 17+
+            notificationCenter.setBadgeCount(count) { error in
+                if let error = error {
+                    print("❌ Failed to set badge count to \(count): \(error.localizedDescription)")
+                } else {
+                    print("✅ Badge count set to \(count)")
+                }
+            }
+        } else {
+            // Fallback to legacy API for iOS 16 and earlier
+            DispatchQueue.main.async {
+                UIApplication.shared.applicationIconBadgeNumber = count
+                print("✅ Badge count set to \(count) (legacy)")
+            }
         }
     }
     
@@ -107,6 +144,8 @@ class NotificationManager: ObservableObject {
                 print("❌ Failed to send immediate notification: \(error.localizedDescription)")
             } else {
                 print("✅ Immediate test notification sent")
+                // Set badge count when notification is sent
+                self.setBadgeCount(1)
             }
         }
     }

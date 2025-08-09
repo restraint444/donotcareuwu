@@ -38,6 +38,29 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         print("📱 User tapped notification: \(response.notification.request.identifier)")
+        
+        // Reset badge count when user interacts with notification
+        resetBadgeCountOnInteraction()
+        
         completionHandler()
+    }
+    
+    private func resetBadgeCountOnInteraction() {
+        if #available(iOS 17.0, *) {
+            // Use modern UNUserNotificationCenter API for iOS 17+
+            UNUserNotificationCenter.current().setBadgeCount(0) { error in
+                if let error = error {
+                    print("❌ Failed to reset badge count on interaction: \(error.localizedDescription)")
+                } else {
+                    print("✅ Badge count reset on user interaction")
+                }
+            }
+        } else {
+            // Fallback to legacy API for iOS 16 and earlier
+            DispatchQueue.main.async {
+                UIApplication.shared.applicationIconBadgeNumber = 0
+                print("✅ Badge count reset on user interaction (legacy)")
+            }
+        }
     }
 }
