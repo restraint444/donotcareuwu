@@ -13,6 +13,14 @@ struct DoNotCareApp: App {
         WindowGroup {
             ContentView()
                 .preferredColorScheme(.light)
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                    // App is going to background - save current state
+                    print("📱 App going to background - saving time state")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                    // App became active - this will trigger TimeTracker's calculateTimeFromBackground
+                    print("📱 App became active - calculating background time")
+                }
         }
     }
 }
@@ -37,7 +45,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        print("📱 User tapped notification: \(response.notification.request.identifier)")
+        print("📱 User tapped 'do not care' notification: \(response.notification.request.identifier)")
         
         // Reset badge count when user interacts with notification
         resetBadgeCountOnInteraction()

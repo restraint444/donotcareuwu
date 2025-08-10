@@ -3,10 +3,8 @@ import UserNotifications
 
 struct ContentView: View {
     @StateObject private var notificationManager = NotificationManager()
-    @State private var careMode = true // true = caring (ON), false = not caring (OFF)
-    @State private var startTime = Date()
-    @State private var elapsedTime: TimeInterval = 0
-    @State private var timer: Timer?
+    @StateObject private var timeTracker = TimeTracker()
+    @State private var doNotCareMode = false // false = caring mode (OFF), true = do not care mode (ON)
     @State private var showingPermissionAlert = false
     
     var body: some View {
@@ -27,24 +25,24 @@ struct ContentView: View {
                 
                 // Time elapsed display
                 VStack(spacing: 8) {
-                    Text(formatElapsedTime(elapsedTime))
+                    Text(formatElapsedTime(doNotCareMode ? timeTracker.notCaringTime : timeTracker.caringTime))
                         .font(.system(size: 48, weight: .ultraLight, design: .rounded))
                         .foregroundColor(.secondary)
                         .monospacedDigit()
                     
-                    Text(careMode ? "time caring" : "time not caring")
+                    Text(doNotCareMode ? "time not caring" : "time caring")
                         .font(.system(size: 16, weight: .light, design: .rounded))
                         .foregroundColor(Color(.tertiaryLabel))
                 }
                 .padding(.bottom, 20)
                 
-                // Main control
+                // Main control - Fixed text to always show "do not care"
                 HStack(spacing: 16) {
-                    Text("care")
+                    Text("do not care")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                     
-                    Toggle("", isOn: $careMode)
+                    Toggle("", isOn: $doNotCareMode)
                         .toggleStyle(SwitchToggleStyle(tint: .accentColor))
                         .scaleEffect(1.2)
                 }
@@ -59,7 +57,7 @@ struct ContentView: View {
                 Spacer()
                 
                 // Simple status
-                Text(careMode ? "notifications paused" : "notifications active")
+                Text(doNotCareMode ? "notifications active" : "notifications paused")
                     .font(.system(size: 14, weight: .light, design: .rounded))
                     .foregroundColor(.secondary)
                     .padding(.bottom, 40)
@@ -68,11 +66,11 @@ struct ContentView: View {
         }
         .onAppear {
             setupNotifications()
-            startTimer()
+            timeTracker.startTracking()
         }
-        .onChange(of: careMode) { _, newValue in
-            handleCareModeChange(newValue)
-            resetTimer()
+        .onChange(of: doNotCareMode) { _, newValue in
+            handleDoNotCareModeChange(newValue)
+            timeTracker.setCareMode(newValue)
         }
         .alert("Notification Permission Required", isPresented: $showingPermissionAlert) {
             Button("Settings") {
@@ -109,7 +107,7 @@ struct ContentView: View {
     
     private func setupNotificationCategories() {
         let careCategory = UNNotificationCategory(
-            identifier: "CARE_REMINDER",
+            identifier: "DO_NOT_CARE_REMINDER",
             actions: [],
             intentIdentifiers: [],
             options: [.customDismissAction]
@@ -118,28 +116,16 @@ struct ContentView: View {
         UNUserNotificationCenter.current().setNotificationCategories([careCategory])
     }
     
-    private func handleCareModeChange(_ newValue: Bool) {
+    private func handleDoNotCareModeChange(_ newValue: Bool) {
         if newValue {
-            // Caring mode ON - stop notifications
-            print("🟢 Care mode ON - Stopping all background notifications")
-            notificationManager.stopNotifications()
-        } else {
-            // Caring mode OFF - start notifications
-            print("🔴 Care mode OFF - Starting background notifications")
+            // Do not care mode ON - start notifications
+            print("🔴 Do not care mode ON - Starting background notifications")
             notificationManager.startNotifications()
+        } else {
+            // Do not care mode OFF - stop notifications
+            print("🟢 Do not care mode OFF - Stopping all background notifications")
+            notificationManager.stopNotifications()
         }
-    }
-    
-    private func startTimer() {
-        startTime = Date()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            elapsedTime = Date().timeIntervalSince(startTime)
-        }
-    }
-    
-    private func resetTimer() {
-        startTime = Date()
-        elapsedTime = 0
     }
     
     private func formatElapsedTime(_ time: TimeInterval) -> String {
