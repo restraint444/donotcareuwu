@@ -39,7 +39,7 @@ struct ContentView: View {
                 // Main control - Reduced font size for single line
                 HStack(spacing: 16) {
                     Text("do not care")
-                        .font(.system(size: 24, weight: .bold, design: .rounded)) // Reduced from 32 to 24
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                     
                     Toggle("", isOn: $doNotCareMode)
@@ -58,14 +58,28 @@ struct ContentView: View {
                 
                 // Enhanced status with notification info
                 VStack(spacing: 8) {
-                    Text(doNotCareMode ? "notifications active" : "notifications paused")
+                    Text(doNotCareMode ? "notifications every 60 seconds" : "notifications paused")
                         .font(.system(size: 14, weight: .light, design: .rounded))
                         .foregroundColor(.secondary)
                     
                     if doNotCareMode {
-                        Text("screen will wake every 20 seconds")
-                            .font(.system(size: 12, weight: .light, design: .rounded))
-                            .foregroundColor(Color(.tertiaryLabel))
+                        VStack(spacing: 4) {
+                            Text("pre-scheduled notification system active")
+                                .font(.system(size: 12, weight: .light, design: .rounded))
+                                .foregroundColor(Color(.tertiaryLabel))
+                            
+                            Text("works even when app is completely closed")
+                                .font(.system(size: 12, weight: .light, design: .rounded))
+                                .foregroundColor(Color(.tertiaryLabel))
+                                .fontWeight(.medium)
+                        }
+                        
+                        // Debug button (remove in production)
+                        Button("Check Notification Status") {
+                            notificationManager.checkStatus()
+                        }
+                        .font(.system(size: 10))
+                        .padding(.top, 8)
                     }
                 }
                 .padding(.bottom, 40)
@@ -85,12 +99,17 @@ struct ContentView: View {
             doNotCareMode = false
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            print("📱 App going to background")
+            print("📱 App going to background - notification system will continue independently")
             timeTracker.handleAppWillResignActive()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            print("📱 App became active")
+            print("📱 App became active - checking notification system status")
             timeTracker.handleAppDidBecomeActive()
+            
+            // Check notification status when app becomes active
+            if doNotCareMode {
+                notificationManager.checkStatus()
+            }
         }
         .alert("Notification Permission Required", isPresented: $showingPermissionAlert) {
             Button("Settings") {
@@ -100,7 +119,7 @@ struct ContentView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Please enable notifications in Settings to receive reminders that will wake your screen when you don't care.")
+            Text("Please enable notifications in Settings to receive continuous reminders when you don't care.")
         }
     }
     
@@ -115,9 +134,6 @@ struct ContentView: View {
                     self.showingPermissionAlert = true
                 case .authorized, .provisional, .ephemeral:
                     print("✅ Notifications already authorized")
-                    print("📱 Alert style: \(settings.alertStyle.rawValue)")
-                    print("📱 Badge setting: \(settings.badgeSetting.rawValue)")
-                    print("📱 Sound setting: \(settings.soundSetting.rawValue)")
                 @unknown default:
                     self.notificationManager.requestPermission()
                 }
@@ -127,12 +143,12 @@ struct ContentView: View {
     
     private func handleDoNotCareModeChange(_ newValue: Bool) {
         if newValue {
-            // Do not care mode ON - start notifications
-            print("🔴 Do not care mode ON - Starting continuous 20-second notifications")
+            // Do not care mode ON - start pre-scheduled notification system
+            print("🔴 Do not care mode ON - Starting pre-scheduled notification system (every 60s)")
             notificationManager.startNotifications()
         } else {
-            // Do not care mode OFF - stop notifications
-            print("🟢 Do not care mode OFF - Stopping all notifications")
+            // Do not care mode OFF - stop all notifications immediately
+            print("🟢 Do not care mode OFF - Stopping all pre-scheduled notifications")
             notificationManager.stopNotifications()
         }
     }
@@ -148,11 +164,6 @@ struct ContentView: View {
             return String(format: "%02d:%02d", minutes, seconds)
         }
     }
-}
-
-// Extension for notification names
-extension Notification.Name {
-    static let userChoseToCare = Notification.Name("userChoseToCare")
 }
 
 #Preview {

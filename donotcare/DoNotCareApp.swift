@@ -8,26 +8,21 @@ struct DoNotCareApp: App {
         // Configure notification delegate on app launch
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
         
-        // Request critical alert permission (optional - requires special entitlement)
-        // This would make notifications more likely to wake the screen
+        // Setup enhanced notification categories for better wake behavior
         setupNotificationCategories()
+        
+        print("🚀 Do Not Care app launched - pre-scheduled notification system ready")
     }
     
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .preferredColorScheme(.light)
-                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-                    print("📱 App going to background - saving time state")
-                }
-                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                    print("📱 App became active - calculating background time")
-                }
         }
     }
     
     private func setupNotificationCategories() {
-        // Create a more prominent notification category
+        // Create actions that encourage user interaction
         let careAction = UNNotificationAction(
             identifier: "CARE_ACTION",
             title: "I Care Now",
@@ -40,33 +35,44 @@ struct DoNotCareApp: App {
             options: []
         )
         
-        let careCategory = UNNotificationCategory(
-            identifier: "DO_NOT_CARE_REMINDER",
+        // Create category with available options for maximum wake behavior
+        let wakeCategory = UNNotificationCategory(
+            identifier: "WAKE_REMINDER",
             actions: [careAction, dismissAction],
             intentIdentifiers: [],
             options: [.customDismissAction, .allowInCarPlay]
         )
         
-        UNUserNotificationCenter.current().setNotificationCategories([careCategory])
-        print("✅ Enhanced notification categories set up")
+        UNUserNotificationCenter.current().setNotificationCategories([wakeCategory])
+        print("✅ Enhanced wake notification categories configured")
     }
 }
 
-// Enhanced notification delegate for better screen wake behavior
+// Enhanced notification delegate optimized for screen wake behavior
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationDelegate()
     
-    // This makes notifications appear as banners even when app is in foreground
+    // Critical: This makes notifications appear even when app is in foreground
+    // AND ensures maximum wake behavior when app is backgrounded
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        print("📱 Notification will present: \(notification.request.identifier)")
+        let sequence = notification.request.content.userInfo["sequence"] as? Int ?? 0
+        print("📱 Notification will present - Sequence #\(sequence): \(notification.request.identifier)")
         
-        // Show banner, play sound, and update badge even in foreground
-        // This combination should wake the screen
-        completionHandler([.banner, .sound, .badge])
+        // Log the notification type
+        if let notificationType = notification.request.content.userInfo["notification_type"] as? String {
+            print("📱 Notification type: \(notificationType)")
+        }
+        
+        // Use all available presentation options for maximum wake effect
+        if #available(iOS 14.0, *) {
+            completionHandler([.banner, .sound, .badge, .list])
+        } else {
+            completionHandler([.alert, .sound, .badge])
+        }
     }
     
     // Handle notification taps and actions
@@ -75,14 +81,14 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        print("📱 User interacted with notification: \(response.notification.request.identifier)")
+        let sequence = response.notification.request.content.userInfo["sequence"] as? Int ?? 0
+        print("📱 User interacted with notification - Sequence #\(sequence): \(response.notification.request.identifier)")
         print("📱 Action identifier: \(response.actionIdentifier)")
         
         // Handle different actions
         switch response.actionIdentifier {
         case "CARE_ACTION":
-            print("💚 User chose to care - could toggle app state here")
-            // You could send a notification to ContentView to turn off "do not care" mode
+            print("💚 User chose to care - toggling app state")
             NotificationCenter.default.post(name: .userChoseToCare, object: nil)
             
         case "DISMISS_ACTION":
@@ -95,26 +101,12 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             print("📱 Unknown action: \(response.actionIdentifier)")
         }
         
-        // Reset badge count when user interacts
-        resetBadgeCountOnInteraction()
-        
         completionHandler()
     }
-    
-    private func resetBadgeCountOnInteraction() {
-        if #available(iOS 17.0, *) {
-            UNUserNotificationCenter.current().setBadgeCount(0) { error in
-                if let error = error {
-                    print("❌ Failed to reset badge count on interaction: \(error.localizedDescription)")
-                } else {
-                    print("✅ Badge count reset on user interaction")
-                }
-            }
-        } else {
-            DispatchQueue.main.async {
-                UIApplication.shared.applicationIconBadgeNumber = 0
-                print("✅ Badge count reset on user interaction (legacy)")
-            }
-        }
-    }
+}
+
+// Extension for notification names
+extension Notification.Name {
+    static let userChoseToCare = Notification.Name("userChoseToCare")
+    static let maintenanceNotificationReceived = Notification.Name("maintenanceNotificationReceived")
 }

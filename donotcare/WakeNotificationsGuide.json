@@ -1,0 +1,39 @@
+{
+  "notification_system": {
+    "type": "dual_alternating",
+    "interval_seconds": 30,
+    "initial_delays": [5, 35],
+    "pattern": "5s → 35s → 65s → 95s → 125s...",
+    "description": "Two notifications alternate every 30 seconds after initial staggered start"
+  },
+  "wake_optimization": {
+    "sound": "default",
+    "badge": "enabled",
+    "presentation_options": ["banner", "sound", "badge", "list"],
+    "category": "WAKE_REMINDER",
+    "user_info": {
+      "wake_screen": true,
+      "priority": "high"
+    }
+  },
+  "ios_requirements": {
+    "minimum_version": "iOS 14.0",
+    "permissions_needed": ["alert", "sound", "badge"],
+    "critical_alerts": false,
+    "note": "Uses maximum available local notification features for screen wake"
+  },
+  "testing_steps": [
+    "1. Toggle 'do not care' ON",
+    "2. Lock device immediately",
+    "3. First notification at 5 seconds",
+    "4. Second notification at 35 seconds",
+    "5. Then alternating every 30 seconds",
+    "6. Screen should wake with each notification"
+  ],
+  "troubleshooting": {
+    "no_screen_wake": "Check notification settings in iOS Settings > Notifications > [App] - ensure Lock Screen is enabled",
+    "no_sound": "Check device silent switch and notification sound settings",
+    "permissions_denied": "Direct user to iOS Settings to enable notifications manually"
+  }
+}
+
