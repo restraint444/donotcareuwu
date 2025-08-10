@@ -50,6 +50,14 @@ class TimeTracker: ObservableObject {
         displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             self.updateAllTimers()
         }
+        
+        // CRITICAL FIX: If we're in caring mode and don't have a start time, start it now
+        if currentMode == .caring && caringStartTime == nil {
+            print("🔧 FIXING: Starting caring timer on app launch")
+            caringStartTime = Date()
+            caringTime = 0
+        }
+        
         print("📊 Display timer started - updating all timers every second")
     }
     
