@@ -58,34 +58,11 @@ struct ContentView: View {
                 
                 Spacer()
                 
-                // Status and debug info
-                VStack(spacing: 12) {
-                    Text(careMode ? "notifications paused" : "notifications active")
-                        .font(.system(size: 14, weight: .light, design: .rounded))
-                        .foregroundColor(.secondary)
-                    
-                    // Debug buttons
-                    VStack(spacing: 8) {
-                        Button("Check Pending Notifications") {
-                            notificationManager.checkPendingNotifications()
-                        }
-                        .font(.system(size: 12, weight: .light, design: .rounded))
-                        .foregroundColor(.blue)
-                        
-                        Button("Check Authorization") {
-                            notificationManager.checkAuthorizationStatus()
-                        }
-                        .font(.system(size: 12, weight: .light, design: .rounded))
-                        .foregroundColor(.green)
-                        
-                        if !careMode {
-                            Text("Next notification in: ~60 seconds")
-                                .font(.system(size: 10, weight: .light, design: .rounded))
-                                .foregroundColor(.orange)
-                        }
-                    }
-                }
-                .padding(.bottom, 40)
+                // Simple status
+                Text(careMode ? "notifications paused" : "notifications active")
+                    .font(.system(size: 14, weight: .light, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 40)
             }
             .padding()
         }
@@ -148,7 +125,7 @@ struct ContentView: View {
             notificationManager.stopNotifications()
         } else {
             // Caring mode OFF - start notifications
-            print("🔴 Care mode OFF - Starting background notifications every 60 seconds")
+            print("🔴 Care mode OFF - Starting background notifications")
             notificationManager.startNotifications()
         }
     }

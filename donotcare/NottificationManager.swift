@@ -1,6 +1,6 @@
 import Foundation
 import UserNotifications
-import UIKit  // Add this import for UIApplication
+import UIKit
 
 class NotificationManager: ObservableObject {
     private let notificationCenter = UNUserNotificationCenter.current()
@@ -22,13 +22,13 @@ class NotificationManager: ObservableObject {
     }
     
     func startNotifications() {
-        print("🔔 Starting background notifications (every 60 seconds)...")
+        print("🔔 Starting background notifications...")
         stopNotifications() // Clear any existing notifications first
         
-        // Schedule 64 notifications (iOS limit) starting from now
-        // This gives us ~1 hour of notifications every minute
+        // Schedule 64 notifications (iOS limit)
         let maxNotifications = 64
-        let intervalSeconds = 60.0 // 1 minute
+        let intervalSeconds: TimeInterval = 60.0 // 1 minute
+        let baseDelay: TimeInterval = 5.0 // Start first notification after 5 seconds
         
         for i in 0..<maxNotifications {
             let identifier = "\(notificationIdentifierPrefix)\(i)"
@@ -40,8 +40,16 @@ class NotificationManager: ObservableObject {
             content.badge = NSNumber(value: 1)
             content.categoryIdentifier = "CARE_REMINDER"
             
-            // CRITICAL: Use absolute date trigger, not time interval
-            let fireDate = Date().addingTimeInterval(intervalSeconds * Double(i + 1))
+            // Calculate fire time with proper minimum delay
+            let timeInterval = baseDelay + (intervalSeconds * Double(i))
+            let fireDate = Date().addingTimeInterval(timeInterval)
+            
+            // Ensure we're scheduling for the future
+            guard fireDate > Date() else {
+                print("⚠️ Skipping notification \(i) - fire date is in the past")
+                continue
+            }
+            
             let trigger = UNCalendarNotificationTrigger(
                 dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: fireDate),
                 repeats: false
@@ -57,14 +65,13 @@ class NotificationManager: ObservableObject {
                 if let error = error {
                     print("❌ Failed to schedule notification \(i): \(error.localizedDescription)")
                 } else if i == 0 {
-                    print("✅ Successfully scheduled \(maxNotifications) notifications starting at \(fireDate)")
-                    print("🕐 First notification will fire in 60 seconds")
+                    print("✅ Successfully scheduled \(maxNotifications) notifications starting in \(baseDelay) seconds")
                 }
             }
         }
         
-        // Send immediate test notification
-        sendImmediateTestNotification()
+        // Send immediate notification
+        sendImmediateNotification()
     }
     
     func stopNotifications() {
@@ -83,13 +90,12 @@ class NotificationManager: ObservableObject {
         // Remove delivered notifications from notification center
         notificationCenter.removeAllDeliveredNotifications()
         
-        // Reset badge count using modern iOS 17+ API
+        // Reset badge count
         resetBadgeCount()
     }
     
     private func resetBadgeCount() {
         if #available(iOS 17.0, *) {
-            // Use modern UNUserNotificationCenter API for iOS 17+
             notificationCenter.setBadgeCount(0) { error in
                 if let error = error {
                     print("❌ Failed to reset badge count: \(error.localizedDescription)")
@@ -98,7 +104,6 @@ class NotificationManager: ObservableObject {
                 }
             }
         } else {
-            // Fallback to legacy API for iOS 16 and earlier
             DispatchQueue.main.async {
                 UIApplication.shared.applicationIconBadgeNumber = 0
                 print("✅ Badge count reset to 0 (legacy)")
@@ -108,7 +113,6 @@ class NotificationManager: ObservableObject {
     
     private func setBadgeCount(_ count: Int) {
         if #available(iOS 17.0, *) {
-            // Use modern UNUserNotificationCenter API for iOS 17+
             notificationCenter.setBadgeCount(count) { error in
                 if let error = error {
                     print("❌ Failed to set badge count to \(count): \(error.localizedDescription)")
@@ -117,7 +121,6 @@ class NotificationManager: ObservableObject {
                 }
             }
         } else {
-            // Fallback to legacy API for iOS 16 and earlier
             DispatchQueue.main.async {
                 UIApplication.shared.applicationIconBadgeNumber = count
                 print("✅ Badge count set to \(count) (legacy)")
@@ -125,67 +128,29 @@ class NotificationManager: ObservableObject {
         }
     }
     
-    private func sendImmediateTestNotification() {
+    private func sendImmediateNotification() {
         let content = UNMutableNotificationContent()
         content.title = "Do Not Care - Started"
-        content.body = "Notifications are now active. First reminder in 60 seconds."
+        content.body = "Notifications are now active"
         content.sound = .default
         content.badge = NSNumber(value: 1)
         content.categoryIdentifier = "CARE_REMINDER"
         
+        // Use a small delay trigger instead of nil to avoid timing issues
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
+        
         let request = UNNotificationRequest(
-            identifier: "immediate_test_notification",
+            identifier: "immediate_notification",
             content: content,
-            trigger: nil // Send immediately
+            trigger: trigger
         )
         
         notificationCenter.add(request) { error in
             if let error = error {
                 print("❌ Failed to send immediate notification: \(error.localizedDescription)")
             } else {
-                print("✅ Immediate test notification sent")
-                // Set badge count when notification is sent
+                print("✅ Immediate notification scheduled for 1 second")
                 self.setBadgeCount(1)
-            }
-        }
-    }
-    
-    // Debug function to check pending notifications
-    func checkPendingNotifications() {
-        notificationCenter.getPendingNotificationRequests { requests in
-            let careNotifications = requests.filter { $0.identifier.hasPrefix(self.notificationIdentifierPrefix) }
-            print("📋 Pending care notifications: \(careNotifications.count)")
-            
-            for request in careNotifications.prefix(10) { // Show first 10
-                if let trigger = request.trigger as? UNCalendarNotificationTrigger {
-                    let components = trigger.dateComponents
-                    if let hour = components.hour, let minute = components.minute, let second = components.second {
-                        print("  - \(request.identifier): \(hour):\(String(format: "%02d", minute)):\(String(format: "%02d", second))")
-                    }
-                }
-            }
-            
-            if careNotifications.isEmpty {
-                print("⚠️ NO NOTIFICATIONS SCHEDULED!")
-            } else {
-                print("✅ Notifications properly scheduled for background delivery")
-            }
-        }
-    }
-    
-    // Check notification authorization status
-    func checkAuthorizationStatus() {
-        notificationCenter.getNotificationSettings { settings in
-            DispatchQueue.main.async {
-                print("🔐 Notification Authorization Status:")
-                print("  - Status: \(settings.authorizationStatus.rawValue)")
-                print("  - Alert Setting: \(settings.alertSetting.rawValue)")
-                print("  - Badge Setting: \(settings.badgeSetting.rawValue)")
-                print("  - Sound Setting: \(settings.soundSetting.rawValue)")
-                
-                if settings.authorizationStatus != .authorized {
-                    print("⚠️ Notifications not fully authorized!")
-                }
             }
         }
     }
