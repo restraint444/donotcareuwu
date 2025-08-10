@@ -7,16 +7,20 @@ class TimeTracker: ObservableObject {
     
     private var timer: Timer?
     private var currentMode: Bool = false // false = caring, true = not caring
+    private var sessionStartTime: Date = Date()
     
-    // UserDefaults keys for persistence
+    // UserDefaults keys for persistence (keeping for historical data if needed)
     private let caringTimeKey = "caringTimeTotal"
     private let notCaringTimeKey = "notCaringTimeTotal"
     private let lastUpdateKey = "lastUpdateTime"
     private let lastModeKey = "lastCareMode"
     
     init() {
-        loadPersistedTimes()
-        calculateTimeFromBackground()
+        // Always start fresh - don't load persisted times
+        caringTime = 0
+        notCaringTime = 0
+        sessionStartTime = Date()
+        print("📊 TimeTracker initialized - starting fresh")
     }
     
     func startTracking() {
@@ -24,91 +28,69 @@ class TimeTracker: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             self.updateCurrentTime()
         }
+        print("📊 Time tracking started")
     }
     
     func setCareMode(_ careMode: Bool) {
-        // Save current accumulated time before switching modes
-        saveCurrentState()
-        
         currentMode = careMode
         
-        // Save the new mode
-        UserDefaults.standard.set(careMode, forKey: lastModeKey)
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastUpdateKey)
+        // RESET: Always start the timer at 0 when switching modes
+        if careMode {
+            // Switching to "not caring" mode - reset not caring time to 0
+            notCaringTime = 0
+            print("📊 Switched to NOT CARING mode - timer reset to 0")
+        } else {
+            // Switching to "caring" mode - reset caring time to 0
+            caringTime = 0
+            print("📊 Switched to CARING mode - timer reset to 0")
+        }
         
-        print("📊 Mode switched to: \(careMode ? "not caring" : "caring")")
-        print("📊 Current caring time: \(formatTime(caringTime))")
-        print("📊 Current not caring time: \(formatTime(notCaringTime))")
+        // Reset session start time for the new mode
+        sessionStartTime = Date()
+        
+        // Save the new mode for background calculations
+        UserDefaults.standard.set(careMode, forKey: lastModeKey)
+        UserDefaults.standard.set(sessionStartTime.timeIntervalSince1970, forKey: lastUpdateKey)
     }
     
     private func updateCurrentTime() {
-        let now = Date().timeIntervalSince1970
-        let lastUpdate = UserDefaults.standard.double(forKey: lastUpdateKey)
+        let now = Date()
+        let timeElapsed = now.timeIntervalSince(sessionStartTime)
         
-        if lastUpdate > 0 {
-            let timeDiff = now - lastUpdate
+        if currentMode {
+            // Not caring mode - update not caring time
+            notCaringTime = timeElapsed
+        } else {
+            // Caring mode - update caring time
+            caringTime = timeElapsed
+        }
+    }
+    
+    // Handle app going to background
+    func handleAppWillResignActive() {
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastUpdateKey)
+        UserDefaults.standard.set(currentMode, forKey: lastModeKey)
+        print("📊 App going to background - saved state")
+    }
+    
+    // Handle app coming back from background
+    func handleAppDidBecomeActive() {
+        let lastUpdate = UserDefaults.standard.double(forKey: lastUpdateKey)
+        let lastMode = UserDefaults.standard.bool(forKey: lastModeKey)
+        
+        if lastUpdate > 0 && lastMode == currentMode {
+            let now = Date().timeIntervalSince1970
+            let backgroundTime = now - lastUpdate
             
-            if currentMode {
-                // Not caring mode - increment not caring time
-                notCaringTime += timeDiff
-                UserDefaults.standard.set(notCaringTime, forKey: notCaringTimeKey)
-            } else {
-                // Caring mode - increment caring time
-                caringTime += timeDiff
-                UserDefaults.standard.set(caringTime, forKey: caringTimeKey) // Fixed: was using wrong parameters
+            // Only adjust if we were backgrounded for more than 5 seconds
+            if backgroundTime > 5 {
+                // Adjust session start time to account for background time
+                sessionStartTime = sessionStartTime.addingTimeInterval(-backgroundTime)
+                print("📊 App returned from background - adjusted timer by \(Int(backgroundTime)) seconds")
             }
         }
         
         // Update last update time
-        UserDefaults.standard.set(now, forKey: lastUpdateKey)
-    }
-    
-    private func saveCurrentState() {
-        updateCurrentTime() // Make sure we're up to date
-        UserDefaults.standard.set(caringTime, forKey: caringTimeKey)
-        UserDefaults.standard.set(notCaringTime, forKey: notCaringTimeKey)
-    }
-    
-    private func loadPersistedTimes() {
-        caringTime = UserDefaults.standard.double(forKey: caringTimeKey)
-        notCaringTime = UserDefaults.standard.double(forKey: notCaringTimeKey)
-        currentMode = UserDefaults.standard.bool(forKey: lastModeKey)
-        
-        print("📊 Loaded persisted times:")
-        print("📊 Caring time: \(formatTime(caringTime))")
-        print("📊 Not caring time: \(formatTime(notCaringTime))")
-        print("📊 Last mode: \(currentMode ? "not caring" : "caring")")
-    }
-    
-    private func calculateTimeFromBackground() {
-        let lastUpdate = UserDefaults.standard.double(forKey: lastUpdateKey)
-        
-        if lastUpdate > 0 {
-            let now = Date().timeIntervalSince1970
-            let timeDiff = now - lastUpdate
-            
-            // Only add time if the app was backgrounded for more than 10 seconds
-            // (to avoid small timing issues when quickly switching between apps)
-            if timeDiff > 10 {
-                let lastMode = UserDefaults.standard.bool(forKey: lastModeKey)
-                
-                if lastMode {
-                    // Was in not caring mode
-                    notCaringTime += timeDiff
-                    print("📊 Added \(formatTime(timeDiff)) to not caring time from background")
-                } else {
-                    // Was in caring mode
-                    caringTime += timeDiff
-                    print("📊 Added \(formatTime(timeDiff)) to caring time from background")
-                }
-                
-                // Save updated times
-                UserDefaults.standard.set(caringTime, forKey: caringTimeKey)
-                UserDefaults.standard.set(notCaringTime, forKey: notCaringTimeKey)
-            }
-        }
-        
-        // Update the last update time to now
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastUpdateKey)
     }
     
@@ -121,6 +103,6 @@ class TimeTracker: ObservableObject {
     
     deinit {
         timer?.invalidate()
-        saveCurrentState()
+        print("📊 TimeTracker deinitialized")
     }
 }
