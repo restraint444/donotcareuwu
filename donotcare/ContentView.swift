@@ -36,11 +36,13 @@ struct ContentView: View {
                 }
                 .padding(.bottom, 20)
                 
-                // Main control
+                // Main control - Fixed to single line
                 HStack(spacing: 16) {
                     Text("do not care")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     
                     Toggle("", isOn: $doNotCareMode)
                         .toggleStyle(SwitchToggleStyle(tint: .accentColor))
@@ -56,47 +58,11 @@ struct ContentView: View {
                 
                 Spacer()
                 
-                // Enhanced status with notification info
+                // Clean status display - Updated text
                 VStack(spacing: 8) {
-                    Text(doNotCareMode ? "notifications every 60 seconds" : "notifications paused")
+                    Text(doNotCareMode ? "focus reminders on" : "focus reminders off")
                         .font(.system(size: 14, weight: .light, design: .rounded))
                         .foregroundColor(.secondary)
-                    
-                    if doNotCareMode {
-                        VStack(spacing: 4) {
-                            Text("pre-scheduled notification system active")
-                                .font(.system(size: 12, weight: .light, design: .rounded))
-                                .foregroundColor(Color(.tertiaryLabel))
-                            
-                            Text("works even when app is completely closed")
-                                .font(.system(size: 12, weight: .light, design: .rounded))
-                                .foregroundColor(Color(.tertiaryLabel))
-                                .fontWeight(.medium)
-                            
-                            // Show session start time for debugging
-                            if let startTime = timeTracker.getSessionStartTime() {
-                                Text("Started: \(DateFormatter.debugFormatter.string(from: startTime))")
-                                    .font(.system(size: 10, weight: .light, design: .monospaced))
-                                    .foregroundColor(Color(.quaternaryLabel))
-                                    .padding(.top, 4)
-                            }
-                        }
-                        
-                        // Debug button (remove in production)
-                        Button("Check Notification Status") {
-                            notificationManager.checkStatus()
-                        }
-                        .font(.system(size: 10))
-                        .padding(.top, 8)
-                    } else {
-                        // Show option to clear any lingering notifications
-                        Button("Clear All Notifications") {
-                            notificationManager.stopNotifications()
-                        }
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
-                    }
                 }
                 .padding(.bottom, 40)
             }
@@ -138,7 +104,7 @@ struct ContentView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Please enable notifications in Settings to receive continuous reminders when you don't care.")
+            Text("Please enable notifications in Settings to receive focus reminders when you don't care.")
         }
     }
     
@@ -205,12 +171,12 @@ struct ContentView: View {
     
     private func handleDoNotCareModeChange(_ newValue: Bool) {
         if newValue {
-            // Do not care mode ON - start pre-scheduled notification system
-            print("🔴 Do not care mode ON - Starting pre-scheduled notification system (every 60s)")
+            // Do not care mode ON - start notification system
+            print("🔴 Do not care mode ON - Starting notification system (every 60s)")
             notificationManager.startNotifications()
         } else {
             // Do not care mode OFF - stop all notifications immediately
-            print("🟢 Do not care mode OFF - Stopping all pre-scheduled notifications")
+            print("🟢 Do not care mode OFF - Stopping all notifications")
             notificationManager.stopNotifications()
         }
         

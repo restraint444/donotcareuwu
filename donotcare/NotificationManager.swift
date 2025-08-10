@@ -4,9 +4,8 @@ import UIKit
 
 class NotificationManager: ObservableObject {
     private let notificationCenter = UNUserNotificationCenter.current()
+    private var notificationTimer: Timer?
     private var isActive = false
-    private let maxNotifications = 64 // iOS limit for pending notifications
-    private let notificationInterval: TimeInterval = 60.0 // 60 seconds
     
     func requestPermission() {
         notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
@@ -24,71 +23,58 @@ class NotificationManager: ObservableObject {
     }
     
     func startNotifications() {
-        print("🔔 Starting continuous notification system - scheduling \(maxNotifications) notifications")
-        stopNotifications() // Clear any existing notifications
+        print("🔔 Starting notification loop - IMMEDIATE notification + timer every 60s")
+        
+        // Clear any existing notifications
+        notificationCenter.removeAllPendingNotificationRequests()
+        notificationCenter.removeAllDeliveredNotifications()
+        
         isActive = true
         
-        // Send immediate notification when turned on
+        // Send notification RIGHT NOW
         sendImmediateNotification()
         
-        // Pre-schedule all notifications at once (this works even when app is backgrounded)
-        scheduleAllNotifications()
+        // Start timer that fires every 60 seconds
+        notificationTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { _ in
+            self.sendNotification()
+        }
         
-        print("✅ Sent immediate notification + pre-scheduled \(maxNotifications) notifications")
+        print("✅ Immediate notification sent + 60s timer started")
     }
     
     private func sendImmediateNotification() {
         let content = UNMutableNotificationContent()
         content.title = "💭 Do Not Care"
-        content.body = "Do not care mode activated - notifications every 60 seconds"
+        content.body = "Focus reminders activated - you don't care now"
         content.sound = UNNotificationSound.default
         content.badge = NSNumber(value: 1)
         content.categoryIdentifier = "WAKE_REMINDER"
         
         content.userInfo = [
             "wake_screen": true,
-            "priority": "high",
-            "sequence": 0,
-            "notification_type": "immediate_activation"
+            "priority": "high"
         ]
         
-        // Send immediately (0.1 second delay to ensure it fires)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
         
         let request = UNNotificationRequest(
-            identifier: "immediate_notification",
+            identifier: "immediate_\(Date().timeIntervalSince1970)",
             content: content,
             trigger: trigger
         )
         
         notificationCenter.add(request) { error in
             if let error = error {
-                print("❌ Failed to schedule immediate notification: \(error.localizedDescription)")
+                print("❌ Failed to send immediate notification: \(error)")
             } else {
-                print("✅ Immediate notification scheduled")
+                print("✅ IMMEDIATE notification sent")
             }
         }
     }
     
-    private func scheduleAllNotifications() {
+    private func sendNotification() {
         guard isActive else { return }
         
-        // Schedule notifications starting from 60 seconds, then every 60 seconds after that
-        for i in 0..<maxNotifications {
-            let delay = Double(i + 1) * notificationInterval // Start at 60s, then 120s, 180s, etc.
-            let identifier = "wake_notification_\(i)"
-            
-            scheduleNotification(delay: delay, identifier: identifier, sequence: i + 1)
-        }
-        
-        print("✅ Scheduled \(maxNotifications) notifications:")
-        print("   - Immediate notification: now")
-        print("   - First scheduled notification: 60 seconds from now")
-        print("   - Subsequent notifications: every \(Int(notificationInterval)) seconds")
-        print("   - Last notification: \(Int(Double(maxNotifications) * notificationInterval / 60)) minutes from now")
-    }
-    
-    private func scheduleNotification(delay: TimeInterval, identifier: String, sequence: Int) {
         let content = UNMutableNotificationContent()
         content.title = "💭 Do Not Care"
         content.body = getRandomWakeMessage()
@@ -96,58 +82,54 @@ class NotificationManager: ObservableObject {
         content.badge = NSNumber(value: 1)
         content.categoryIdentifier = "WAKE_REMINDER"
         
-        // Add userInfo for wake behavior and sequence tracking
         content.userInfo = [
             "wake_screen": true,
-            "priority": "high",
-            "sequence": sequence,
-            "scheduled_time": Date().timeIntervalSince1970 + delay,
-            "notification_type": "continuous_reminder"
+            "priority": "high"
         ]
         
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
         
         let request = UNNotificationRequest(
-            identifier: identifier,
+            identifier: "timer_\(Date().timeIntervalSince1970)",
             content: content,
             trigger: trigger
         )
         
         notificationCenter.add(request) { error in
             if let error = error {
-                print("❌ Failed to schedule notification \(sequence): \(error.localizedDescription)")
+                print("❌ Failed to send timer notification: \(error)")
+            } else {
+                print("✅ Timer notification sent")
             }
         }
     }
     
     func stopNotifications() {
-        print("🛑 Stopping notification system")
+        print("🛑 Stopping notification loop")
         isActive = false
         
-        // Remove all pending notifications
+        // Stop the timer
+        notificationTimer?.invalidate()
+        notificationTimer = nil
+        
+        // Clear all notifications
         notificationCenter.removeAllPendingNotificationRequests()
         notificationCenter.removeAllDeliveredNotifications()
-        
-        // Reset badge count
         resetBadgeCount()
         
-        // Check how many were actually removed
-        notificationCenter.getPendingNotificationRequests { requests in
-            print("✅ Removed all notifications - \(requests.count) notifications cleared")
-        }
+        print("✅ Notification loop stopped")
     }
     
-    // CRITICAL: New method to check if notifications are actually scheduled
     func checkPendingNotifications(completion: @escaping (Bool) -> Void) {
         notificationCenter.getPendingNotificationRequests { requests in
             let hasNotifications = requests.count > 0
-            print("📊 Pending notifications check: \(requests.count) notifications found")
+            print("📊 Pending notifications: \(requests.count)")
             completion(hasNotifications)
         }
     }
     
     private func getRandomWakeMessage() -> String {
-        let wakeMessages = [
+        let messages = [
             "Remember: you don't care right now 💭",
             "Keep not caring - you're doing great 🌟",
             "Stay in your don't care zone 🧘‍♂️",
@@ -164,70 +146,20 @@ class NotificationManager: ObservableObject {
             "Choose your battles - this isn't one ⚔️",
             "Save your energy for what matters 💫"
         ]
-        return wakeMessages.randomElement() ?? "Remember: you don't care right now 💭"
+        return messages.randomElement() ?? "Remember: you don't care right now 💭"
     }
     
     private func resetBadgeCount() {
         if #available(iOS 17.0, *) {
             notificationCenter.setBadgeCount(0) { error in
                 if let error = error {
-                    print("❌ Failed to reset badge count: \(error.localizedDescription)")
-                } else {
-                    print("✅ Badge count reset to 0")
+                    print("❌ Failed to reset badge: \(error)")
                 }
             }
         } else {
             DispatchQueue.main.async {
                 UIApplication.shared.applicationIconBadgeNumber = 0
-                print("✅ Badge count reset to 0 (legacy)")
             }
         }
     }
-    
-    // Enhanced debug function
-    func checkStatus() {
-        print("📊 Notification Manager Status:")
-        print("   Active: \(isActive)")
-        print("   System: Pre-scheduled notification system (works when app is closed)")
-        
-        notificationCenter.getPendingNotificationRequests { requests in
-            print("   📅 Pending notifications: \(requests.count)")
-            
-            // Show next 5 notifications
-            let sortedRequests = requests.sorted { req1, req2 in
-                guard let trigger1 = req1.trigger as? UNTimeIntervalNotificationTrigger,
-                      let trigger2 = req2.trigger as? UNTimeIntervalNotificationTrigger else {
-                    return false
-                }
-                return trigger1.timeInterval < trigger2.timeInterval
-            }
-            
-            print("   📋 Next notifications:")
-            for (index, request) in sortedRequests.prefix(5).enumerated() {
-                if let trigger = request.trigger as? UNTimeIntervalNotificationTrigger {
-                    let fireDate = Date().addingTimeInterval(trigger.timeInterval)
-                    let sequence = request.content.userInfo["sequence"] as? Int ?? 0
-                    print("     \(index + 1). Sequence #\(sequence): \(DateFormatter.timeFormatter.string(from: fireDate))")
-                }
-            }
-            
-            if requests.count > 5 {
-                print("     ... and \(requests.count - 5) more notifications")
-            }
-        }
-        
-        // Check delivered notifications
-        notificationCenter.getDeliveredNotifications { delivered in
-            print("   📬 Delivered notifications: \(delivered.count)")
-        }
-    }
-}
-
-// Extension for time formatting
-extension DateFormatter {
-    static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .medium
-        return formatter
-    }()
 }
