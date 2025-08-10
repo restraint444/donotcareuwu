@@ -10,8 +10,6 @@ struct DoNotCareApp: App {
         
         // Setup enhanced notification categories for better wake behavior
         setupNotificationCategories()
-        
-        print("🚀 Do Not Care app launched - pre-scheduled notification system ready")
     }
     
     var body: some Scene {
@@ -59,12 +57,17 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        let sequence = notification.request.content.userInfo["sequence"] as? Int ?? 0
-        print("📱 Notification will present - Sequence #\(sequence): \(notification.request.identifier)")
+        print("📱 Notification will present: \(notification.request.identifier)")
         
-        // Log the notification type
-        if let notificationType = notification.request.content.userInfo["notification_type"] as? String {
-            print("📱 Notification type: \(notificationType)")
+        // Check if this is a maintenance notification
+        if let maintenance = notification.request.content.userInfo["maintenance"] as? Bool, maintenance {
+            print("🔧 Maintenance notification received - rescheduling more notifications")
+            // Get the notification manager and reschedule
+            DispatchQueue.main.async {
+                // You'll need to access your notification manager instance here
+                // For now, we'll handle this in the ContentView
+                NotificationCenter.default.post(name: .maintenanceNotificationReceived, object: nil)
+            }
         }
         
         // Use all available presentation options for maximum wake effect
@@ -81,9 +84,14 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let sequence = response.notification.request.content.userInfo["sequence"] as? Int ?? 0
-        print("📱 User interacted with notification - Sequence #\(sequence): \(response.notification.request.identifier)")
+        print("📱 User interacted with notification: \(response.notification.request.identifier)")
         print("📱 Action identifier: \(response.actionIdentifier)")
+        
+        // Check if this is a maintenance notification
+        if let maintenance = response.notification.request.content.userInfo["maintenance"] as? Bool, maintenance {
+            print("🔧 Maintenance notification tapped - rescheduling more notifications")
+            NotificationCenter.default.post(name: .maintenanceNotificationReceived, object: nil)
+        }
         
         // Handle different actions
         switch response.actionIdentifier {

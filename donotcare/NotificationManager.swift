@@ -28,25 +28,62 @@ class NotificationManager: ObservableObject {
         stopNotifications() // Clear any existing notifications
         isActive = true
         
+        // Send immediate notification when turned on
+        sendImmediateNotification()
+        
         // Pre-schedule all notifications at once (this works even when app is backgrounded)
         scheduleAllNotifications()
         
-        print("✅ Pre-scheduled \(maxNotifications) notifications - system will work when app is closed")
+        print("✅ Sent immediate notification + pre-scheduled \(maxNotifications) notifications")
+    }
+    
+    private func sendImmediateNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "💭 Do Not Care"
+        content.body = "Do not care mode activated - notifications every 60 seconds"
+        content.sound = UNNotificationSound.default
+        content.badge = NSNumber(value: 1)
+        content.categoryIdentifier = "WAKE_REMINDER"
+        
+        content.userInfo = [
+            "wake_screen": true,
+            "priority": "high",
+            "sequence": 0,
+            "notification_type": "immediate_activation"
+        ]
+        
+        // Send immediately (0.1 second delay to ensure it fires)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+        
+        let request = UNNotificationRequest(
+            identifier: "immediate_notification",
+            content: content,
+            trigger: trigger
+        )
+        
+        notificationCenter.add(request) { error in
+            if let error = error {
+                print("❌ Failed to schedule immediate notification: \(error.localizedDescription)")
+            } else {
+                print("✅ Immediate notification scheduled")
+            }
+        }
     }
     
     private func scheduleAllNotifications() {
         guard isActive else { return }
         
-        // Schedule notifications starting from 1 second, then every 60 seconds
+        // Schedule notifications starting from 60 seconds, then every 60 seconds after that
         for i in 0..<maxNotifications {
-            let delay = (i == 0) ? 1.0 : Double(i) * notificationInterval + 1.0
+            let delay = Double(i + 1) * notificationInterval // Start at 60s, then 120s, 180s, etc.
             let identifier = "wake_notification_\(i)"
             
             scheduleNotification(delay: delay, identifier: identifier, sequence: i + 1)
         }
         
         print("✅ Scheduled \(maxNotifications) notifications:")
-        print("   - First notification: 1 second from now")
+        print("   - Immediate notification: now")
+        print("   - First scheduled notification: 60 seconds from now")
         print("   - Subsequent notifications: every \(Int(notificationInterval)) seconds")
         print("   - Last notification: \(Int(Double(maxNotifications) * notificationInterval / 60)) minutes from now")
     }
@@ -79,9 +116,6 @@ class NotificationManager: ObservableObject {
         notificationCenter.add(request) { error in
             if let error = error {
                 print("❌ Failed to schedule notification \(sequence): \(error.localizedDescription)")
-            } else {
-                let fireTime = Date().addingTimeInterval(delay)
-                print("✅ Scheduled notification \(sequence) for \(DateFormatter.timeFormatter.string(from: fireTime))")
             }
         }
     }
@@ -100,6 +134,15 @@ class NotificationManager: ObservableObject {
         // Check how many were actually removed
         notificationCenter.getPendingNotificationRequests { requests in
             print("✅ Removed all notifications - \(requests.count) notifications cleared")
+        }
+    }
+    
+    // CRITICAL: New method to check if notifications are actually scheduled
+    func checkPendingNotifications(completion: @escaping (Bool) -> Void) {
+        notificationCenter.getPendingNotificationRequests { requests in
+            let hasNotifications = requests.count > 0
+            print("📊 Pending notifications check: \(requests.count) notifications found")
+            completion(hasNotifications)
         }
     }
     
@@ -176,20 +219,6 @@ class NotificationManager: ObservableObject {
         // Check delivered notifications
         notificationCenter.getDeliveredNotifications { delivered in
             print("   📬 Delivered notifications: \(delivered.count)")
-        }
-    }
-    
-    // This method is no longer needed since we pre-schedule everything
-    func handleMaintenanceNotification() {
-        guard isActive else { return }
-        print("🔧 Maintenance notification received - system is pre-scheduled, no action needed")
-        
-        // Check if we're running low on notifications and warn user
-        notificationCenter.getPendingNotificationRequests { requests in
-            if requests.count < 5 {
-                print("⚠️ Warning: Only \(requests.count) notifications remaining!")
-                print("💡 User should toggle OFF and ON again to reschedule more notifications")
-            }
         }
     }
 }

@@ -4,7 +4,7 @@ import UserNotifications
 struct ContentView: View {
     @StateObject private var notificationManager = NotificationManager()
     @StateObject private var timeTracker = TimeTracker()
-    @State private var doNotCareMode = false // false = caring mode (OFF), true = do not care mode (ON)
+    @State private var doNotCareMode = false
     @State private var showingPermissionAlert = false
     
     var body: some View {
@@ -23,7 +23,7 @@ struct ContentView: View {
             VStack(spacing: 40) {
                 Spacer()
                 
-                // Time elapsed display - RESETS TO 0 on mode change
+                // Time elapsed display - Shows ACTUAL elapsed time since mode was set
                 VStack(spacing: 8) {
                     Text(formatElapsedTime(doNotCareMode ? timeTracker.notCaringTime : timeTracker.caringTime))
                         .font(.system(size: 48, weight: .ultraLight, design: .rounded))
@@ -36,7 +36,7 @@ struct ContentView: View {
                 }
                 .padding(.bottom, 20)
                 
-                // Main control - Reduced font size for single line
+                // Main control
                 HStack(spacing: 16) {
                     Text("do not care")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -72,6 +72,14 @@ struct ContentView: View {
                                 .font(.system(size: 12, weight: .light, design: .rounded))
                                 .foregroundColor(Color(.tertiaryLabel))
                                 .fontWeight(.medium)
+                            
+                            // Show session start time for debugging
+                            if let startTime = timeTracker.getSessionStartTime() {
+                                Text("Started: \(DateFormatter.debugFormatter.string(from: startTime))")
+                                    .font(.system(size: 10, weight: .light, design: .monospaced))
+                                    .foregroundColor(Color(.quaternaryLabel))
+                                    .padding(.top, 4)
+                            }
                         }
                         
                         // Debug button (remove in production)
@@ -80,6 +88,14 @@ struct ContentView: View {
                         }
                         .font(.system(size: 10))
                         .padding(.top, 8)
+                    } else {
+                        // Show option to clear any lingering notifications
+                        Button("Clear All Notifications") {
+                            notificationManager.stopNotifications()
+                        }
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
                     }
                 }
                 .padding(.bottom, 40)
@@ -88,28 +104,31 @@ struct ContentView: View {
         }
         .onAppear {
             setupNotifications()
+            
+            // CRITICAL: Restore the actual app state from persistence
+            restoreAppState()
+            
             timeTracker.startTracking()
         }
         .onChange(of: doNotCareMode) { _, newValue in
             handleDoNotCareModeChange(newValue)
-            timeTracker.setCareMode(newValue) // This now resets the timer to 0
+            timeTracker.setCareMode(newValue)
         }
         .onReceive(NotificationCenter.default.publisher(for: .userChoseToCare)) { _ in
             // Handle when user taps "I Care Now" in notification
             doNotCareMode = false
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            print("📱 App going to background - notification system will continue independently")
+            print("📱 App going to background - saving state")
             timeTracker.handleAppWillResignActive()
+            saveAppState()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            print("📱 App became active - checking notification system status")
+            print("📱 App became active - restoring state")
             timeTracker.handleAppDidBecomeActive()
             
-            // Check notification status when app becomes active
-            if doNotCareMode {
-                notificationManager.checkStatus()
-            }
+            // Verify our state matches reality
+            verifyNotificationState()
         }
         .alert("Notification Permission Required", isPresented: $showingPermissionAlert) {
             Button("Settings") {
@@ -120,6 +139,49 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Please enable notifications in Settings to receive continuous reminders when you don't care.")
+        }
+    }
+    
+    // CRITICAL: Restore the actual app state when app launches
+    private func restoreAppState() {
+        let savedMode = UserDefaults.standard.bool(forKey: "doNotCareMode")
+        let hasSavedState = UserDefaults.standard.object(forKey: "doNotCareMode") != nil
+        
+        if hasSavedState {
+            print("📱 Restoring saved state - doNotCareMode: \(savedMode)")
+            doNotCareMode = savedMode
+            
+            // Let TimeTracker restore its state first
+            timeTracker.restoreState()
+            
+            // Verify notifications match our restored state
+            verifyNotificationState()
+        } else {
+            print("📱 No saved state found - starting fresh")
+            doNotCareMode = false
+        }
+    }
+    
+    // Save app state when backgrounding
+    private func saveAppState() {
+        UserDefaults.standard.set(doNotCareMode, forKey: "doNotCareMode")
+        print("📱 Saved app state - doNotCareMode: \(doNotCareMode)")
+    }
+    
+    // Verify that our UI state matches the actual notification state
+    private func verifyNotificationState() {
+        notificationManager.checkPendingNotifications { hasNotifications in
+            DispatchQueue.main.async {
+                if hasNotifications && !self.doNotCareMode {
+                    print("⚠️ STATE MISMATCH: Notifications are scheduled but UI shows OFF")
+                    print("🔧 Correcting: Setting UI to match notification state")
+                    self.doNotCareMode = true
+                } else if !hasNotifications && self.doNotCareMode {
+                    print("⚠️ STATE MISMATCH: No notifications but UI shows ON")
+                    print("🔧 Correcting: Setting UI to match notification state")
+                    self.doNotCareMode = false
+                }
+            }
         }
     }
     
@@ -151,6 +213,9 @@ struct ContentView: View {
             print("🟢 Do not care mode OFF - Stopping all pre-scheduled notifications")
             notificationManager.stopNotifications()
         }
+        
+        // Save the new state immediately
+        saveAppState()
     }
     
     private func formatElapsedTime(_ time: TimeInterval) -> String {
@@ -164,6 +229,16 @@ struct ContentView: View {
             return String(format: "%02d:%02d", minutes, seconds)
         }
     }
+}
+
+// Extension for debug formatting
+extension DateFormatter {
+    static let debugFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter
+    }()
 }
 
 #Preview {
