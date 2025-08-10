@@ -1,0 +1,48 @@
+{
+  "timer_system_architecture": {
+    "type": "three_independent_timers",
+    "description": "Each mode has its own dedicated timer that operates independently",
+    "timers": {
+      "timer_1_caring": {
+        "purpose": "Tracks total time spent caring across all sessions",
+        "behavior": "Accumulates continuously when caring mode is active",
+        "persistence": "Saved to UserDefaults, survives app restarts",
+        "display": "Shows total caring time when in caring mode"
+      },
+      "timer_2_countdown": {
+        "purpose": "40-minute countdown for do not care sessions",
+        "behavior": "Counts down from 40:00 to 00:00",
+        "reset": "Resets to 40:00 each time do not care mode is activated",
+        "display": "Shows remaining time when in do not care mode"
+      },
+      "timer_3_focus": {
+        "purpose": "Tracks individual focus session duration",
+        "behavior": "Counts up from 00:00 during focus sessions",
+        "reset": "Resets to 00:00 each time focus mode is activated",
+        "display": "Shows elapsed focus time when in focus mode"
+      }
+    }
+  },
+  "mode_switching_process": {
+    "step_1": "Detect mode change via toggle",
+    "step_2": "Stop and save previous mode's timer",
+    "step_3": "Start new mode's timer from appropriate starting point",
+    "step_4": "Update current mode state",
+    "step_5": "Update display immediately",
+    "step_6": "Save state to UserDefaults",
+    "mutual_exclusivity": "Only one timer active at a time, others are paused"
+  },
+  "notification_system_fixes": {
+    "abort_previous_process": "Each mode switch cancels all pending notifications",
+    "clean_slate": "New notification system starts fresh every time",
+    "no_conflicts": "Previous notification schedules cannot interfere",
+    "immediate_response": "New notifications scheduled within milliseconds"
+  },
+  "key_improvements": {
+    "no_timer_conflicts": "Each timer operates independently with its own start time",
+    "proper_handoffs": "Clean stop/start process prevents frozen timers",
+    "instant_mode_switching": "No delays or race conditions when switching modes",
+    "reliable_persistence": "Each timer's state is saved separately",
+    "notification_reliability": "Complete process abort prevents notification conflicts"
+  }
+}

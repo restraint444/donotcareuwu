@@ -1,0 +1,43 @@
+{
+  "problem_identified": {
+    "issue": "Both toggles could be ON simultaneously",
+    "cause": "Independent onChange handlers allowed dual activation",
+    "symptoms": [
+      "Both switches showing ON state",
+      "Conflicting notification systems running",
+      "Timer confusion between modes",
+      "Race conditions in state management"
+    ]
+  },
+  "solution_implemented": {
+    "unified_handler": "Single handleToggleChange function for both toggles",
+    "binding_override": "Custom Binding with set handlers that call unified function",
+    "mutual_exclusivity": "Automatic enforcement - one ON forces the other OFF",
+    "process_abortion": "Previous process always aborted before new activation"
+  },
+  "new_toggle_behavior": {
+    "do_not_care_on": {
+      "action": "User toggles 'do not care' ON",
+      "enforcement": "Focus mode automatically turns OFF",
+      "result": "Only do not care active"
+    },
+    "focus_on": {
+      "action": "User toggles 'focus mode' ON",
+      "enforcement": "Do not care automatically turns OFF",
+      "result": "Only focus mode active"
+    },
+    "either_off": {
+      "action": "User toggles either mode OFF",
+      "enforcement": "Other mode state unchanged",
+      "result": "Caring mode if both OFF"
+    }
+  },
+  "process_flow": {
+    "step_1": "Abort previous notification process immediately",
+    "step_2": "Determine new state with mutual exclusivity",
+    "step_3": "Update UI toggle states",
+    "step_4": "Activate appropriate mode (timer + notifications)",
+    "step_5": "Save new state to UserDefaults",
+    "guarantee": "No race conditions or dual activation possible"
+  }
+}

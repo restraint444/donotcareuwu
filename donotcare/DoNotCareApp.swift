@@ -8,8 +8,10 @@ struct DoNotCareApp: App {
         // Configure notification delegate on app launch
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
         
-        // Setup enhanced notification categories for better wake behavior
+        // Setup enhanced notification categories for both modes
         setupNotificationCategories()
+        
+        print("🚀 Do Not Care app launched - dual notification system ready")
     }
     
     var body: some Scene {
@@ -20,33 +22,53 @@ struct DoNotCareApp: App {
     }
     
     private func setupNotificationCategories() {
-        // Create actions that encourage user interaction
+        // Create actions for Do Not Care mode
         let careAction = UNNotificationAction(
             identifier: "CARE_ACTION",
             title: "I Care Now",
             options: [.foreground]
         )
         
-        let dismissAction = UNNotificationAction(
-            identifier: "DISMISS_ACTION",
+        let dismissDoNotCareAction = UNNotificationAction(
+            identifier: "DISMISS_DO_NOT_CARE",
             title: "Keep Not Caring",
             options: []
         )
         
-        // Create category with available options for maximum wake behavior
-        let wakeCategory = UNNotificationCategory(
-            identifier: "WAKE_REMINDER",
-            actions: [careAction, dismissAction],
+        // Create actions for Focus mode
+        let stopFocusAction = UNNotificationAction(
+            identifier: "STOP_FOCUS_ACTION",
+            title: "Stop Focusing",
+            options: [.foreground]
+        )
+        
+        let continueFocusAction = UNNotificationAction(
+            identifier: "CONTINUE_FOCUS",
+            title: "Stay Focused",
+            options: []
+        )
+        
+        // Create categories
+        let doNotCareCategory = UNNotificationCategory(
+            identifier: "DO_NOT_CARE_REMINDER",
+            actions: [careAction, dismissDoNotCareAction],
             intentIdentifiers: [],
             options: [.customDismissAction, .allowInCarPlay]
         )
         
-        UNUserNotificationCenter.current().setNotificationCategories([wakeCategory])
-        print("✅ Enhanced wake notification categories configured")
+        let focusCategory = UNNotificationCategory(
+            identifier: "FOCUS_REMINDER",
+            actions: [stopFocusAction, continueFocusAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction, .allowInCarPlay]
+        )
+        
+        UNUserNotificationCenter.current().setNotificationCategories([doNotCareCategory, focusCategory])
+        print("✅ Enhanced notification categories configured for both modes")
     }
 }
 
-// Enhanced notification delegate optimized for screen wake behavior
+// Enhanced notification delegate optimized for dual-mode behavior
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationDelegate()
     
@@ -57,18 +79,9 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        print("📱 Notification will present: \(notification.request.identifier)")
-        
-        // Check if this is a maintenance notification
-        if let maintenance = notification.request.content.userInfo["maintenance"] as? Bool, maintenance {
-            print("🔧 Maintenance notification received - rescheduling more notifications")
-            // Get the notification manager and reschedule
-            DispatchQueue.main.async {
-                // You'll need to access your notification manager instance here
-                // For now, we'll handle this in the ContentView
-                NotificationCenter.default.post(name: .maintenanceNotificationReceived, object: nil)
-            }
-        }
+        let mode = notification.request.content.userInfo["mode"] as? String ?? "unknown"
+        let type = notification.request.content.userInfo["type"] as? String ?? "unknown"
+        print("📱 Notification will present - Mode: \(mode), Type: \(type)")
         
         // Use all available presentation options for maximum wake effect
         if #available(iOS 14.0, *) {
@@ -84,14 +97,9 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        print("📱 User interacted with notification: \(response.notification.request.identifier)")
+        let mode = response.notification.request.content.userInfo["mode"] as? String ?? "unknown"
+        print("📱 User interacted with \(mode) notification: \(response.notification.request.identifier)")
         print("📱 Action identifier: \(response.actionIdentifier)")
-        
-        // Check if this is a maintenance notification
-        if let maintenance = response.notification.request.content.userInfo["maintenance"] as? Bool, maintenance {
-            print("🔧 Maintenance notification tapped - rescheduling more notifications")
-            NotificationCenter.default.post(name: .maintenanceNotificationReceived, object: nil)
-        }
         
         // Handle different actions
         switch response.actionIdentifier {
@@ -99,11 +107,19 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             print("💚 User chose to care - toggling app state")
             NotificationCenter.default.post(name: .userChoseToCare, object: nil)
             
-        case "DISMISS_ACTION":
+        case "DISMISS_DO_NOT_CARE":
             print("💭 User chose to keep not caring")
             
+        case "STOP_FOCUS_ACTION":
+            print("🛑 User chose to stop focusing - toggling app state")
+            NotificationCenter.default.post(name: .userChoseToCare, object: nil)
+            
+        case "CONTINUE_FOCUS":
+            print("🎯 User chose to continue focusing")
+            
         case UNNotificationDefaultActionIdentifier:
-            print("📱 User tapped notification (default action)")
+            print("📱 User tapped notification body - opening app")
+            // Default tap behavior - app opens normally
             
         default:
             print("📱 Unknown action: \(response.actionIdentifier)")
@@ -113,8 +129,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
-// Extension for notification names
+// Extension for custom notification names
 extension Notification.Name {
     static let userChoseToCare = Notification.Name("userChoseToCare")
-    static let maintenanceNotificationReceived = Notification.Name("maintenanceNotificationReceived")
 }

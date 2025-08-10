@@ -1,0 +1,61 @@
+{
+  "caring_time_behavior": {
+    "reset_triggers": [
+      "Toggle 'do not care' ON",
+      "Toggle 'do not care' OFF",
+      "Toggle 'focus mode' ON",
+      "Toggle 'focus mode' OFF"
+    ],
+    "description": "Caring time ALWAYS resets to 00:00 whenever either toggle changes",
+    "no_persistence": "Caring time is never saved across app sessions"
+  },
+  "user_experience": {
+    "scenario_1": {
+      "action": "App opens → caring mode shows 00:00",
+      "wait": "5 minutes → caring mode shows 05:00",
+      "toggle": "Turn 'do not care' ON → countdown shows 40:00",
+      "toggle_back": "Turn 'do not care' OFF → caring mode shows 00:00 (RESET)"
+    },
+    "scenario_2": {
+      "action": "Caring mode for 10 minutes → shows 10:00",
+      "toggle": "Turn 'focus mode' ON → focus shows 00:00",
+      "toggle_back": "Turn 'focus mode' OFF → caring shows 00:00 (RESET)"
+    },
+    "scenario_3": {
+      "action": "Any toggle change → caring time always resets",
+      "result": "User can never accumulate caring time across sessions"
+    }
+  },
+  "implementation_changes": {
+    "removed": [
+      "totalCaringTime accumulation",
+      "Caring time persistence in UserDefaults",
+      "Caring session accumulation logic"
+    ],
+    "added": [
+      "resetCaringTime() function called on every mode change",
+      "Fresh start behavior for caring timer",
+      "No caring time saved state"
+    ]
+  },
+  "timer_behavior": {
+    "caring_mode": {
+      "display": "time spent caring (this session only)",
+      "behavior": "counts up from 00:00",
+      "reset": "ALWAYS resets to 00:00 on any toggle change",
+      "persistence": "NONE - always starts fresh"
+    },
+    "countdown_mode": {
+      "display": "time remaining",
+      "behavior": "counts down from 40:00 to 00:00",
+      "reset": "resets to 40:00 each time activated",
+      "persistence": "maintains countdown position during session"
+    },
+    "focus_mode": {
+      "display": "time spent focusing",
+      "behavior": "counts up from 00:00",
+      "reset": "resets to 00:00 each time activated",
+      "persistence": "maintains focus time during session"
+    }
+  }
+}

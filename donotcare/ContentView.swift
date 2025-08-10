@@ -5,6 +5,7 @@ struct ContentView: View {
     @StateObject private var notificationManager = NotificationManager()
     @StateObject private var timeTracker = TimeTracker()
     @State private var doNotCareMode = false
+    @State private var focusMode = false
     @State private var showingPermissionAlert = false
     
     var body: some View {
@@ -23,46 +24,82 @@ struct ContentView: View {
             VStack(spacing: 40) {
                 Spacer()
                 
-                // Time elapsed display - Shows ACTUAL elapsed time since mode was set
+                // Time display
                 VStack(spacing: 8) {
-                    Text(formatElapsedTime(doNotCareMode ? timeTracker.notCaringTime : timeTracker.caringTime))
+                    Text(getDisplayTime())
                         .font(.system(size: 48, weight: .ultraLight, design: .rounded))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(getDisplayColor())
                         .monospacedDigit()
                     
-                    Text(doNotCareMode ? "time not caring" : "time caring")
+                    Text(getDisplayLabel())
                         .font(.system(size: 16, weight: .light, design: .rounded))
                         .foregroundColor(Color(.tertiaryLabel))
                 }
                 .padding(.bottom, 20)
                 
-                // Main control - Fixed to single line
-                HStack(spacing: 16) {
-                    Text("do not care")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    
-                    Toggle("", isOn: $doNotCareMode)
-                        .toggleStyle(SwitchToggleStyle(tint: .accentColor))
+                // Main controls - Two mutually exclusive modes
+                VStack(spacing: 16) {
+                    // Do Not Care Mode
+                    HStack(spacing: 16) {
+                        Text("do not care")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        
+                        Toggle("", isOn: Binding(
+                            get: { doNotCareMode },
+                            set: { newValue in
+                                handleToggleChange(doNotCare: newValue, focus: focusMode, toggleChanged: .doNotCare)
+                            }
+                        ))
+                        .toggleStyle(SwitchToggleStyle(tint: .orange))
                         .scaleEffect(1.2)
+                    }
+                    .padding(.horizontal, 40)
+                    .padding(.vertical, 20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(.ultraThinMaterial)
+                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                    )
+                    .opacity(focusMode ? 0.7 : 1.0)
+                    
+                    // Focus Mode
+                    HStack(spacing: 16) {
+                        Text("focus mode")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        
+                        Toggle("", isOn: Binding(
+                            get: { focusMode },
+                            set: { newValue in
+                                handleToggleChange(doNotCare: doNotCareMode, focus: newValue, toggleChanged: .focus)
+                            }
+                        ))
+                        .toggleStyle(SwitchToggleStyle(tint: .blue))
+                        .scaleEffect(1.2)
+                    }
+                    .padding(.horizontal, 40)
+                    .padding(.vertical, 20)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(.ultraThinMaterial)
+                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                    )
+                    .opacity(doNotCareMode ? 0.7 : 1.0)
                 }
-                .padding(.horizontal, 40)
-                .padding(.vertical, 20)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(.ultraThinMaterial)
-                        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
-                )
                 
                 Spacer()
                 
-                // Clean status display - Updated text
+                // Status display
                 VStack(spacing: 8) {
-                    Text(doNotCareMode ? "focus reminders on" : "focus reminders off")
+                    Text(getStatusText())
                         .font(.system(size: 14, weight: .light, design: .rounded))
                         .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
                 }
                 .padding(.bottom, 40)
             }
@@ -70,31 +107,19 @@ struct ContentView: View {
         }
         .onAppear {
             setupNotifications()
-            
-            // CRITICAL: Restore the actual app state from persistence
             restoreAppState()
-            
             timeTracker.startTracking()
-        }
-        .onChange(of: doNotCareMode) { _, newValue in
-            handleDoNotCareModeChange(newValue)
-            timeTracker.setCareMode(newValue)
         }
         .onReceive(NotificationCenter.default.publisher(for: .userChoseToCare)) { _ in
             // Handle when user taps "I Care Now" in notification
-            doNotCareMode = false
+            handleToggleChange(doNotCare: false, focus: false, toggleChanged: .notification)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            print("📱 App going to background - saving state")
             timeTracker.handleAppWillResignActive()
             saveAppState()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            print("📱 App became active - restoring state")
             timeTracker.handleAppDidBecomeActive()
-            
-            // Verify our state matches reality
-            verifyNotificationState()
         }
         .alert("Notification Permission Required", isPresented: $showingPermissionAlert) {
             Button("Settings") {
@@ -104,55 +129,201 @@ struct ContentView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Please enable notifications in Settings to receive focus reminders when you don't care.")
+            Text("Please enable notifications in Settings to receive focus reminders.")
         }
     }
     
-    // CRITICAL: Restore the actual app state when app launches
-    private func restoreAppState() {
-        let savedMode = UserDefaults.standard.bool(forKey: "doNotCareMode")
-        let hasSavedState = UserDefaults.standard.object(forKey: "doNotCareMode") != nil
+    // Enum to track which toggle was changed
+    private enum ToggleType {
+        case doNotCare
+        case focus
+        case notification
+    }
+    
+    // FIXED: Unified toggle handler with strict mutual exclusivity
+    private func handleToggleChange(doNotCare: Bool, focus: Bool, toggleChanged: ToggleType) {
+        print("🎛️ Toggle change - doNotCare: \(doNotCare), focus: \(focus), changed: \(toggleChanged)")
         
-        if hasSavedState {
-            print("📱 Restoring saved state - doNotCareMode: \(savedMode)")
-            doNotCareMode = savedMode
+        // STEP 1: ABORT any previous process immediately
+        print("🛑 ABORTING previous process before state change")
+        notificationManager.stopAllNotifications()
+        
+        // STEP 2: Determine new state with mutual exclusivity enforcement
+        let newState = determineNewState(doNotCare: doNotCare, focus: focus, toggleChanged: toggleChanged)
+        
+        // STEP 3: Update UI state variables
+        doNotCareMode = newState.doNotCare
+        focusMode = newState.focus
+        
+        // STEP 4: Send switch off notifications if modes were turned OFF
+        if toggleChanged == .doNotCare && !newState.doNotCare && doNotCareMode != newState.doNotCare {
+            notificationManager.sendDoNotCareSwitchedOffNotification()
+        }
+        if toggleChanged == .focus && !newState.focus && focusMode != newState.focus {
+            notificationManager.sendFocusModeSwitchedOffNotification()
+        }
+        
+        // STEP 5: Activate the appropriate mode
+        activateMode(doNotCare: newState.doNotCare, focus: newState.focus)
+        
+        // STEP 6: Save state
+        saveAppState()
+        
+        print("✅ Toggle change complete - Final state: doNotCare: \(doNotCareMode), focus: \(focusMode)")
+    }
+    
+    private func determineNewState(doNotCare: Bool, focus: Bool, toggleChanged: ToggleType) -> (doNotCare: Bool, focus: Bool) {
+        switch toggleChanged {
+        case .doNotCare:
+            if doNotCare {
+                // Do Not Care was turned ON - turn off Focus
+                print("🔴 Do Not Care ON - forcing Focus OFF")
+                return (doNotCare: true, focus: false)
+            } else {
+                // Do Not Care was turned OFF - keep Focus as is
+                print("⚪ Do Not Care OFF - Focus remains \(focus ? "ON" : "OFF")")
+                return (doNotCare: false, focus: focus)
+            }
             
-            // Let TimeTracker restore its state first
-            timeTracker.restoreState()
+        case .focus:
+            if focus {
+                // Focus was turned ON - turn off Do Not Care
+                print("🔵 Focus ON - forcing Do Not Care OFF")
+                return (doNotCare: false, focus: true)
+            } else {
+                // Focus was turned OFF - keep Do Not Care as is
+                print("⚪ Focus OFF - Do Not Care remains \(doNotCare ? "ON" : "OFF")")
+                return (doNotCare: doNotCare, focus: false)
+            }
             
-            // Verify notifications match our restored state
-            verifyNotificationState()
-        } else {
-            print("📱 No saved state found - starting fresh")
-            doNotCareMode = false
+        case .notification:
+            // Notification action - turn both OFF
+            print("📱 Notification action - turning both OFF")
+            return (doNotCare: false, focus: false)
         }
     }
     
-    // Save app state when backgrounding
+    private func activateMode(doNotCare: Bool, focus: Bool) {
+        if doNotCare && !focus {
+            // Only do not care mode active
+            print("🔴 ACTIVATING Do Not Care Mode")
+            timeTracker.setMode(.doNotCare)
+            notificationManager.startDoNotCareNotifications()
+        } else if !doNotCare && focus {
+            // Only focus mode active
+            print("🔵 ACTIVATING Focus Mode")
+            timeTracker.setMode(.focus)
+            notificationManager.startFocusNotifications()
+        } else {
+            // Both off or invalid state - caring mode
+            print("🟢 ACTIVATING Caring Mode")
+            timeTracker.setMode(.caring)
+            // Notifications already stopped in STEP 1
+        }
+    }
+    
+    // Get the time to display
+    private func getDisplayTime() -> String {
+        let displayTime = timeTracker.getDisplayTime()
+        
+        if doNotCareMode {
+            // Show countdown time
+            return formatCountdownTime(displayTime)
+        } else {
+            // Show elapsed time (caring or focus)
+            return formatElapsedTime(displayTime)
+        }
+    }
+    
+    // Get the display color based on current mode
+    private func getDisplayColor() -> Color {
+        if doNotCareMode {
+            return .orange
+        } else if focusMode {
+            return .blue
+        } else {
+            return .secondary
+        }
+    }
+    
+    // Get the label to display based on current mode
+    private func getDisplayLabel() -> String {
+        if doNotCareMode {
+            let remainingTime = timeTracker.getRemainingCountdownTime()
+            if remainingTime <= 0 {
+                return "session complete"
+            } else {
+                return "time remaining"
+            }
+        } else if focusMode {
+            return "time spent focusing"
+        } else {
+            return "time spent caring"
+        }
+    }
+    
+    // Get status text based on current mode
+    private func getStatusText() -> String {
+        if doNotCareMode {
+            let remainingTime = timeTracker.getRemainingCountdownTime()
+            if remainingTime <= 0 {
+                return "40-minute session complete - toggle to restart"
+            } else {
+                return "focus reminders active (40s intervals for 40 min)"
+            }
+        } else if focusMode {
+            return "focus reminders active (every 60s until stopped)"
+        } else {
+            return "both reminder modes off - caring mode active"
+        }
+    }
+    
+    private func restoreAppState() {
+        let savedDoNotCareMode = UserDefaults.standard.bool(forKey: "doNotCareMode")
+        let savedFocusMode = UserDefaults.standard.bool(forKey: "focusMode")
+        let hasDoNotCareSavedState = UserDefaults.standard.object(forKey: "doNotCareMode") != nil
+        let hasFocusSavedState = UserDefaults.standard.object(forKey: "focusMode") != nil
+        
+        if hasDoNotCareSavedState || hasFocusSavedState {
+            print("📱 Restoring saved state - doNotCareMode: \(savedDoNotCareMode), focusMode: \(savedFocusMode)")
+            
+            // Ensure mutual exclusivity during restoration
+            if savedDoNotCareMode && savedFocusMode {
+                print("⚠️ Both modes were saved as true - defaulting to caring mode")
+                doNotCareMode = false
+                focusMode = false
+                timeTracker.setMode(.caring)
+            } else if savedDoNotCareMode {
+                doNotCareMode = true
+                focusMode = false
+                timeTracker.setMode(.doNotCare)
+                notificationManager.startDoNotCareNotifications()
+            } else if savedFocusMode {
+                doNotCareMode = false
+                focusMode = true
+                timeTracker.setMode(.focus)
+                notificationManager.startFocusNotifications()
+            } else {
+                doNotCareMode = false
+                focusMode = false
+                timeTracker.setMode(.caring)
+            }
+            
+            timeTracker.restoreState()
+        } else {
+            print("📱 No saved state found - starting fresh in caring mode")
+            doNotCareMode = false
+            focusMode = false
+            timeTracker.setMode(.caring)
+        }
+    }
+    
     private func saveAppState() {
         UserDefaults.standard.set(doNotCareMode, forKey: "doNotCareMode")
-        print("📱 Saved app state - doNotCareMode: \(doNotCareMode)")
-    }
-    
-    // Verify that our UI state matches the actual notification state
-    private func verifyNotificationState() {
-        notificationManager.checkPendingNotifications { hasNotifications in
-            DispatchQueue.main.async {
-                if hasNotifications && !self.doNotCareMode {
-                    print("⚠️ STATE MISMATCH: Notifications are scheduled but UI shows OFF")
-                    print("🔧 Correcting: Setting UI to match notification state")
-                    self.doNotCareMode = true
-                } else if !hasNotifications && self.doNotCareMode {
-                    print("⚠️ STATE MISMATCH: No notifications but UI shows ON")
-                    print("🔧 Correcting: Setting UI to match notification state")
-                    self.doNotCareMode = false
-                }
-            }
-        }
+        UserDefaults.standard.set(focusMode, forKey: "focusMode")
     }
     
     private func setupNotifications() {
-        // Check current authorization status
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             DispatchQueue.main.async {
                 switch settings.authorizationStatus {
@@ -169,21 +340,6 @@ struct ContentView: View {
         }
     }
     
-    private func handleDoNotCareModeChange(_ newValue: Bool) {
-        if newValue {
-            // Do not care mode ON - start notification system
-            print("🔴 Do not care mode ON - Starting notification system (every 60s)")
-            notificationManager.startNotifications()
-        } else {
-            // Do not care mode OFF - stop all notifications immediately
-            print("🟢 Do not care mode OFF - Stopping all notifications")
-            notificationManager.stopNotifications()
-        }
-        
-        // Save the new state immediately
-        saveAppState()
-    }
-    
     private func formatElapsedTime(_ time: TimeInterval) -> String {
         let hours = Int(time) / 3600
         let minutes = (Int(time) % 3600) / 60
@@ -195,16 +351,14 @@ struct ContentView: View {
             return String(format: "%02d:%02d", minutes, seconds)
         }
     }
-}
-
-// Extension for debug formatting
-extension DateFormatter {
-    static let debugFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .medium
-        return formatter
-    }()
+    
+    private func formatCountdownTime(_ time: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(time))
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
 }
 
 #Preview {

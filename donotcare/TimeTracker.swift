@@ -1,185 +1,296 @@
 import Foundation
 import SwiftUI
 
+enum TrackingMode {
+    case caring
+    case doNotCare
+    case focus
+}
+
 class TimeTracker: ObservableObject {
-    @Published var caringTime: TimeInterval = 0
-    @Published var notCaringTime: TimeInterval = 0
+    // Three independent timers for three different purposes
+    @Published var caringTime: TimeInterval = 0      // Timer 1: Always resets to 0 on any toggle change
+    @Published var countdownTime: TimeInterval = 0   // Timer 2: 40-minute countdown
+    @Published var focusTime: TimeInterval = 0       // Timer 3: Focus session time
     
-    private var timer: Timer?
-    private var currentMode: Bool = false // false = caring, true = not caring
-    private var sessionStartTime: Date = Date()
+    // UI timer for display updates
+    private var displayTimer: Timer?
     
-    // UserDefaults keys for persistence
+    // Current active mode
+    private var currentMode: TrackingMode = .caring
+    
+    // Timer 1: Caring time tracking (ALWAYS RESETS on any toggle change)
+    private var caringStartTime: Date?
+    // NOTE: No totalCaringTime persistence - always starts fresh
+    
+    // Timer 2: Countdown tracking (40-minute sessions)
+    private var countdownStartTime: Date?
+    private let countdownDuration: TimeInterval = 40 * 60 // 40 minutes
+    
+    // Timer 3: Focus session tracking
+    private var focusStartTime: Date?
+    
+    // UserDefaults keys for persistence (removed caring time persistence)
     private let caringStartTimeKey = "caringStartTime"
-    private let notCaringStartTimeKey = "notCaringStartTimeKey"
-    private let lastModeKey = "lastCareMode"
-    private let hasActiveSessionKey = "hasActiveSession"
+    private let countdownStartTimeKey = "countdownStartTime"
+    private let focusStartTimeKey = "focusStartTime"
+    private let lastModeKey = "lastTrackingMode"
     
     init() {
-        sessionStartTime = Date()
-        print("📊 TimeTracker initialized")
+        loadSavedState()
+        print("📊 TimeTracker initialized - caring time ALWAYS starts at 0")
+        print("📊 - Caring time: \(formatTime(caringTime)) (fresh start)")
+        print("📊 - Countdown time: \(formatTime(countdownTime))")
+        print("📊 - Focus time: \(formatTime(focusTime))")
     }
     
     func startTracking() {
-        // Start the timer to update UI every second
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            self.updateCurrentTime()
+        // Start the display timer to update UI every second
+        displayTimer?.invalidate()
+        displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            self.updateAllTimers()
         }
-        print("📊 Time tracking started")
+        print("📊 Display timer started - updating all timers every second")
     }
     
-    // CRITICAL: Restore state from UserDefaults when app reopens
-    func restoreState() {
-        let hasActiveSession = UserDefaults.standard.bool(forKey: hasActiveSessionKey)
-        
-        if hasActiveSession {
-            let savedMode = UserDefaults.standard.bool(forKey: lastModeKey)
-            currentMode = savedMode
-            
-            if savedMode {
-                // Restore "not caring" session
-                let startTime = UserDefaults.standard.double(forKey: notCaringStartTimeKey)
-                if startTime > 0 {
-                    sessionStartTime = Date(timeIntervalSince1970: startTime)
-                    let elapsed = Date().timeIntervalSince(sessionStartTime)
-                    notCaringTime = elapsed
-                    print("📊 Restored NOT CARING session - elapsed: \(Int(elapsed)) seconds")
-                }
-            } else {
-                // Restore "caring" session
-                let startTime = UserDefaults.standard.double(forKey: caringStartTimeKey)
-                if startTime > 0 {
-                    sessionStartTime = Date(timeIntervalSince1970: startTime)
-                    let elapsed = Date().timeIntervalSince(sessionStartTime)
-                    caringTime = elapsed
-                    print("📊 Restored CARING session - elapsed: \(Int(elapsed)) seconds")
-                }
-            }
-        } else {
-            print("📊 No active session to restore - starting fresh")
-            // Start fresh caring session
-            let now = Date()
-            sessionStartTime = now
-            currentMode = false
-            caringTime = 0
-            notCaringTime = 0
-            
-            // Save initial state
-            UserDefaults.standard.set(now.timeIntervalSince1970, forKey: caringStartTimeKey)
-            UserDefaults.standard.set(false, forKey: lastModeKey)
-            UserDefaults.standard.set(true, forKey: hasActiveSessionKey)
-            print("📊 Started fresh CARING session")
-        }
-    }
-    
-    func setCareMode(_ careMode: Bool) {
-        let now = Date()
-        
-        // Only reset timer when actually switching modes
-        if currentMode != careMode {
-            print("📊 Mode switch detected: \(currentMode ? "NOT CARING" : "CARING") → \(careMode ? "NOT CARING" : "CARING")")
-            
-            currentMode = careMode
-            sessionStartTime = now
-            
-            if careMode {
-                // Switching to "not caring" mode - reset both timers
-                notCaringTime = 0
-                caringTime = 0
-                UserDefaults.standard.set(now.timeIntervalSince1970, forKey: notCaringStartTimeKey)
-                UserDefaults.standard.removeObject(forKey: caringStartTimeKey)
-                print("📊 Started NOT CARING session at \(now)")
-            } else {
-                // Switching to "caring" mode - reset both timers
-                caringTime = 0
-                notCaringTime = 0
-                UserDefaults.standard.set(now.timeIntervalSince1970, forKey: caringStartTimeKey)
-                UserDefaults.standard.removeObject(forKey: notCaringStartTimeKey)
-                print("📊 Started CARING session at \(now)")
-            }
-            
-            // Save the new state
-            UserDefaults.standard.set(true, forKey: hasActiveSessionKey)
-            UserDefaults.standard.set(careMode, forKey: lastModeKey)
-        }
-    }
-    
-    private func updateCurrentTime() {
-        let now = Date()
-        let timeElapsed = now.timeIntervalSince(sessionStartTime)
-        
-        if currentMode {
-            // Not caring mode - update not caring time
-            notCaringTime = timeElapsed
-        } else {
-            // Caring mode - update caring time
-            caringTime = timeElapsed
-        }
-    }
-    
-    // Handle app going to background - DON'T reset timer, just save current state
-    func handleAppWillResignActive() {
-        // Just save current state, don't reset anything
-        UserDefaults.standard.set(currentMode, forKey: lastModeKey)
-        UserDefaults.standard.set(true, forKey: hasActiveSessionKey)
-        
-        // Update the start time in UserDefaults to current session start
-        if currentMode {
-            UserDefaults.standard.set(sessionStartTime.timeIntervalSince1970, forKey: notCaringStartTimeKey)
-        } else {
-            UserDefaults.standard.set(sessionStartTime.timeIntervalSince1970, forKey: caringStartTimeKey)
+    func setMode(_ mode: TrackingMode) {
+        guard mode != currentMode else {
+            print("📊 Mode unchanged: \(mode.toString())")
+            return
         }
         
-        print("📊 App going to background - state saved (timer continues)")
-        print("📊 Current session: \(currentMode ? "NOT CARING" : "CARING") for \(Int(currentMode ? notCaringTime : caringTime)) seconds")
-    }
-    
-    // Handle app coming back from background - restore and continue timing
-    func handleAppDidBecomeActive() {
-        let savedMode = UserDefaults.standard.bool(forKey: lastModeKey)
+        let previousMode = currentMode
+        print("📊 MODE SWITCH: \(previousMode.toString().uppercased()) → \(mode.toString().uppercased())")
         
-        if savedMode == currentMode {
-            // We're in the same mode - just update the elapsed time based on saved start time
-            if currentMode {
-                let startTime = UserDefaults.standard.double(forKey: notCaringStartTimeKey)
-                if startTime > 0 {
-                    sessionStartTime = Date(timeIntervalSince1970: startTime)
-                    let elapsed = Date().timeIntervalSince(sessionStartTime)
-                    notCaringTime = elapsed
-                    print("📊 App returned - continuing NOT CARING session, elapsed: \(Int(elapsed)) seconds")
-                }
-            } else {
-                let startTime = UserDefaults.standard.double(forKey: caringStartTimeKey)
-                if startTime > 0 {
-                    sessionStartTime = Date(timeIntervalSince1970: startTime)
-                    let elapsed = Date().timeIntervalSince(sessionStartTime)
-                    caringTime = elapsed
-                    print("📊 App returned - continuing CARING session, elapsed: \(Int(elapsed)) seconds")
-                }
-            }
-        }
-    }
-    
-    // Public method to get session start time for debugging
-    func getSessionStartTime() -> Date? {
-        return sessionStartTime
-    }
-    
-    // Clear all session data
-    func clearSession() {
-        UserDefaults.standard.removeObject(forKey: caringStartTimeKey)
-        UserDefaults.standard.removeObject(forKey: notCaringStartTimeKey)
-        UserDefaults.standard.removeObject(forKey: lastModeKey)
-        UserDefaults.standard.removeObject(forKey: hasActiveSessionKey)
+        // STEP 1: Stop previous mode's timer
+        stopPreviousModeTimer(previousMode)
         
+        // STEP 2: ALWAYS reset caring time on any mode change
+        resetCaringTime()
+        
+        // STEP 3: Start new mode's timer
+        startNewModeTimer(mode)
+        
+        // STEP 4: Update current mode
+        currentMode = mode
+        
+        // STEP 5: Update display immediately
+        updateAllTimers()
+        
+        // STEP 6: Save state
+        saveState()
+        
+        print("📊 Mode switch complete: \(mode.toString().uppercased()) active")
+    }
+    
+    private func resetCaringTime() {
+        // ALWAYS reset caring time to 0 on any toggle change
         caringTime = 0
-        notCaringTime = 0
-        sessionStartTime = Date()
-        print("📊 Session data cleared")
+        caringStartTime = nil
+        print("📊 🔄 CARING TIME RESET TO 0 (any toggle change)")
+    }
+    
+    private func stopPreviousModeTimer(_ mode: TrackingMode) {
+        switch mode {
+        case .caring:
+            // Don't save caring time - it will be reset anyway
+            caringStartTime = nil
+            print("📊 STOPPED caring timer - will reset to 0")
+            
+        case .doNotCare:
+            if countdownStartTime != nil {
+                countdownStartTime = nil
+                print("📊 STOPPED countdown timer")
+            }
+            
+        case .focus:
+            if focusStartTime != nil {
+                focusStartTime = nil
+                print("📊 STOPPED focus timer")
+            }
+        }
+    }
+    
+    private func startNewModeTimer(_ mode: TrackingMode) {
+        let now = Date()
+        
+        switch mode {
+        case .caring:
+            caringStartTime = now
+            caringTime = 0 // Always start from 0
+            print("📊 STARTED caring timer from 00:00 (fresh start)")
+            
+        case .doNotCare:
+            countdownStartTime = now
+            countdownTime = countdownDuration // Start at 40:00
+            print("📊 STARTED countdown timer at 40:00")
+            
+        case .focus:
+            focusStartTime = now
+            focusTime = 0 // Start at 00:00
+            print("📊 STARTED focus timer at 00:00")
+        }
+    }
+    
+    private func updateAllTimers() {
+        let now = Date()
+        
+        // Update Timer 1: Caring time (only when caring mode is active, always from 0)
+        if currentMode == .caring, let startTime = caringStartTime {
+            let currentSession = now.timeIntervalSince(startTime)
+            caringTime = currentSession // No accumulated total - always fresh
+        }
+        
+        // Update Timer 2: Countdown time (only when do not care mode is active)
+        if currentMode == .doNotCare, let startTime = countdownStartTime {
+            let elapsed = now.timeIntervalSince(startTime)
+            let remaining = countdownDuration - elapsed
+            countdownTime = max(0, remaining)
+        }
+        
+        // Update Timer 3: Focus time (only when focus mode is active)
+        if currentMode == .focus, let startTime = focusStartTime {
+            let elapsed = now.timeIntervalSince(startTime)
+            focusTime = elapsed
+        }
+    }
+    
+    // Get the appropriate time for UI display
+    func getDisplayTime() -> TimeInterval {
+        switch currentMode {
+        case .caring:
+            return caringTime
+        case .doNotCare:
+            return countdownTime
+        case .focus:
+            return focusTime
+        }
+    }
+    
+    // Get remaining countdown time (for do not care mode status)
+    func getRemainingCountdownTime() -> TimeInterval {
+        return countdownTime
+    }
+    
+    // Check if countdown has completed
+    func isCountdownComplete() -> Bool {
+        return currentMode == .doNotCare && countdownTime <= 0
+    }
+    
+    private func loadSavedState() {
+        // NOTE: No longer loading totalCaringTime - always starts fresh
+        
+        let savedCaringStartTime = UserDefaults.standard.double(forKey: caringStartTimeKey)
+        if savedCaringStartTime > 0 {
+            caringStartTime = Date(timeIntervalSince1970: savedCaringStartTime)
+        }
+        
+        let savedCountdownStartTime = UserDefaults.standard.double(forKey: countdownStartTimeKey)
+        if savedCountdownStartTime > 0 {
+            countdownStartTime = Date(timeIntervalSince1970: savedCountdownStartTime)
+        }
+        
+        let savedFocusStartTime = UserDefaults.standard.double(forKey: focusStartTimeKey)
+        if savedFocusStartTime > 0 {
+            focusStartTime = Date(timeIntervalSince1970: savedFocusStartTime)
+        }
+        
+        let savedModeString = UserDefaults.standard.string(forKey: lastModeKey) ?? "caring"
+        currentMode = TrackingMode.fromString(savedModeString)
+        
+        // Initialize display times - caring always starts at 0
+        caringTime = 0 // Always fresh start
+        countdownTime = countdownDuration
+        focusTime = 0
+        
+        print("📊 Loaded saved state - Mode: \(currentMode.toString().uppercased())")
+        print("📊 Caring time ALWAYS starts fresh at 0")
+    }
+    
+    func restoreState() {
+        // Calculate current times based on saved start times
+        updateAllTimers()
+        print("📊 State restored - Current display: \(formatTime(getDisplayTime()))")
+    }
+    
+    func saveState() {
+        UserDefaults.standard.set(currentMode.toString(), forKey: lastModeKey)
+        // NOTE: No longer saving totalCaringTime - always starts fresh
+        
+        // Save active timer start times
+        if let startTime = caringStartTime {
+            UserDefaults.standard.set(startTime.timeIntervalSince1970, forKey: caringStartTimeKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: caringStartTimeKey)
+        }
+        
+        if let startTime = countdownStartTime {
+            UserDefaults.standard.set(startTime.timeIntervalSince1970, forKey: countdownStartTimeKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: countdownStartTimeKey)
+        }
+        
+        if let startTime = focusStartTime {
+            UserDefaults.standard.set(startTime.timeIntervalSince1970, forKey: focusStartTimeKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: focusStartTimeKey)
+        }
+    }
+    
+    func handleAppWillResignActive() {
+        // No need to accumulate caring progress - it resets on next toggle anyway
+        saveState()
+        print("📊 App backgrounding - \(currentMode.toString().uppercased()): \(formatTime(getDisplayTime()))")
+    }
+    
+    func handleAppDidBecomeActive() {
+        updateAllTimers()
+        print("📊 App foregrounding - \(currentMode.toString().uppercased()): \(formatTime(getDisplayTime()))")
+    }
+    
+    private func formatTime(_ time: TimeInterval) -> String {
+        let totalSeconds = Int(time)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            return String(format: "%02d:%02d", minutes, seconds)
+        }
     }
     
     deinit {
-        timer?.invalidate()
-        print("📊 TimeTracker deinitialized")
+        // No need to save caring progress - it resets on next toggle anyway
+        displayTimer?.invalidate()
+        print("📊 TimeTracker deinitialized - all timers stopped")
+    }
+}
+
+// Extension to convert between TrackingMode and String for UserDefaults
+extension TrackingMode {
+    func toString() -> String {
+        switch self {
+        case .caring:
+            return "caring"
+        case .doNotCare:
+            return "doNotCare"
+        case .focus:
+            return "focus"
+        }
+    }
+    
+    static func fromString(_ string: String) -> TrackingMode {
+        switch string {
+        case "caring":
+            return .caring
+        case "doNotCare":
+            return .doNotCare
+        case "focus":
+            return .focus
+        default:
+            return .caring
+        }
     }
 }
