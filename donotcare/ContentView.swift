@@ -155,18 +155,10 @@ struct ContentView: View {
         doNotCareMode = newState.doNotCare
         focusMode = newState.focus
         
-        // STEP 4: Send switch off notifications if modes were turned OFF
-        if toggleChanged == .doNotCare && !newState.doNotCare && doNotCareMode != newState.doNotCare {
-            notificationManager.sendDoNotCareSwitchedOffNotification()
-        }
-        if toggleChanged == .focus && !newState.focus && focusMode != newState.focus {
-            notificationManager.sendFocusModeSwitchedOffNotification()
-        }
-        
-        // STEP 5: Activate the appropriate mode
+        // STEP 4: Activate the appropriate mode
         activateMode(doNotCare: newState.doNotCare, focus: newState.focus)
         
-        // STEP 6: Save state
+        // STEP 5: Save state
         saveAppState()
         
         print("✅ Toggle change complete - Final state: doNotCare: \(doNotCareMode), focus: \(focusMode)")
